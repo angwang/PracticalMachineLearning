@@ -1,0 +1,83 @@
+---
+title: "Prediction of Weight Lifting Activity Quality"
+date: "November 22, 2014"
+output: html_document
+---
+**Objective:**  In this project we use a _Boosted Regression Tree_ approach to identify whether a weight lifting exercise was done correctly.  The data is obtained from the Weight Lifting Exercise Dataset on the Human Activity Recognition website. Data from accelerometers on the belt, forearm, arm, and dumbell was collected from 6 participants while performing 1 set of 10 repetitions of biceps curls.  Participants were told to lift the barbells in 5 different ways - one correct way and 4 incorrect ways. We will identify which measurements are the most important in identifying the correct execution form for bicep curls.  
+**Conclusion:** The top 3 variables in determining correct form while performing bicep curls are the measurements from: roll_belt, pitch_forearm and yaw_belt  
+
+**Paper Reference:** 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
+Read in the data and tidy it up. We remove all the columns with NA's that we find in the test set, as these variables are not needed to train the model.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(caret)
+library(ggplot2)
+setwd("~/Documents/AngelaStuff/8-PracticalMachineLearning/CourseProject")
+#read in the training data
+trainraw<-read.csv("pml-training.csv")
+#read in the test data
+testraw<-read.csv("pml-testing.csv")
+
+#remove columns with all NA from testing set to see which variables to retain in the training set
+#Remember to remove the answer for the class of the exercise
+NAcolumnList<-apply( testraw , 2 , function(x) all(is.na(x)) )
+testclean<-testraw[ , !NAcolumnList]
+#Remove other non-essential columns from test set
+testclean<- subset(testclean, select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window, problem_id))
+
+#Remove the same columns that were all NA's in the test population from the training set
+trainclean<-trainraw[ , !NAcolumnList ]
+trainclean<-subset(trainclean, select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+```
+
+The raw training data from pml-training.csv is subset into sub-populations, where 75% is used for training and 25% used for testing. We will train and refine our model on the _training_ subset. While the _test_ sub-population is saved for later. The saved test population will be used to predict the accuracy of our best boosting model.
+```{r}
+inTrain<-createDataPartition(y=trainclean$classe, p=0.75, list=FALSE)
+training<-trainclean[inTrain,]
+testing<-trainclean[-inTrain,]
+```
+Fit the boosting model on the training data. We set the sampling method to 10-fold cross-validation with 3 repetitions.
+```{r buildModel, cache=TRUE}
+set.seed(21778)
+ctrl <- trainControl(method = "repeatedcv", repeats = 3)
+modFit<-train(classe ~ ., method="gbm", data=training, trControl=ctrl, verbose=FALSE)
+```
+The results of the model:
+```{r, echo=FALSE}
+print(modFit)
+```
+The model using a maximum tree depth of 3, using a shrinkage value of 0.1 and with 150 boosting iterations gives the highest bootstrapped accuracy.
+
+Calculate the most important variables that are used in determining whether the dumbbell curl was performed correctly. Variable importance is computed using the mean decrease in Gini index, and expressed relative to the maximum. 
+```{r, message=FALSE, echo=FALSE}
+vi<-varImp(modFit,scale=TRUE)
+```
+The top 5 variables with the largest decrease in GINI index are
+roll_belt, pitch_forearm, yaw_belt, magnet_dumbbell_z and roll_forearm.   
+The top 20 variables are plotted in order of importance.
+```{r, echo=FALSE}
+plot(vi,top=20, main="Variable Importance Plot for Weight Lifting Activity")
+```  
+  
+Use the model to predict on the saved testing sub-population. This will give us an estimated out-of-bag error rate which helps predict how this model will perform on a real test population.
+```{r}
+#remove column53=classe which is the true exercise classification
+pred<-predict(modFit, testing[,-53])
+```
+Use a confusion Matrix to calculate the statistics:  
+```{r}
+confMat<-confusionMatrix(pred, testing$classe)
+confMat
+```
+This boosting regression tree model has a high out-of-sample classification accuracy rate of `r round(100*confMat$overall['Accuracy'],2)`%.  
+  
+    
+    
+ 
+
+
+
+  
+  
